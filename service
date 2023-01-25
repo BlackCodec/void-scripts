@@ -1,0 +1,135 @@
+#!/bin/bash
+
+command=${1}
+service_name=${2}
+invert=${3}
+result=0
+
+function serviceEnable() {
+  result=1
+  if [ -d "/etc/sv/${service_name}" ]; then
+    if [ ! -d "/var/service/${service_name}" ]; then
+      sudo ln -s /etc/sv/${service_name} /var/service/${service_name}
+      if [ -d "/var/service/${service_name}" ]; then
+        echo "Service ${service_name} enabled."
+        result=0
+      else
+        echo "Error during enable ${service_name}."
+      fi
+    else
+      echo "Service ${service_name} already enabled."
+      result=0
+    fi
+  else
+    echo "Service ${service_name} does not exists."
+  fi
+}
+
+function serviceDisable() {
+  result=1
+  if [ -d "/var/service/${service_name}" ]; then
+    sudo rm /var/service/${service_name}
+    if [ ! -d "/var/service/${service_name}" ]; then
+      echo "Service ${service_name} disabled."
+      result=0
+    else
+      echo "Error during disable ${service_name}."
+    fi
+  else
+    echo "Service ${service_name} already disabled."
+    result=0
+  fi
+}
+
+function serviceRestart() {
+  serviceStop
+  if [ ${result} -eq 0 ]; then
+    serviceStart
+  fi
+}
+
+function serviceStart() {
+  sudo sv up ${service_name}
+  result=${?}
+}
+
+function serviceStop() {
+  sudo sv down ${service_name}
+  result=${?}
+}
+
+function serviceStatus() {
+  sudo sv status ${service_name}
+  result=${?}
+}
+
+function serviceList() {
+  if [[ "${service_name}" == "enabled" ]]; then
+    for lname in $(ls -1 /var/service); do
+      service_name=${lname}
+      st_stat=$(serviceStatus | awk -F ":" '{print $1}' )
+      echo "${service_name}: ${st_stat}"
+    done
+  elif [[ "${service_name}" == "disabled" ]]; then
+    for lname in $(ls -1 /etc/sv/); do
+      if [ ! -d "/var/service/${lname}" ]; then
+        echo "${lname}"
+      fi
+    done
+  else
+    for lname in $(ls -1 /etc/sv/); do
+      if [ ! -d "/var/service/${lname}" ]; then
+        echo "${lname} - disabled"
+      else
+        echo "${lname} - enabled"
+      fi
+    done
+  fi
+  result=1  
+}
+
+function showHelp() {
+  echo "Usage ${0} <command> <service_name>."
+  echo "If command is not in supported command list the program try to invert the syntax to ${0} <service_name> <command>."
+  echo "If also in this way the command is not present in supported command list you will receive an error message."
+  echo
+  echo "Supported commands:"
+  echo " - enable: enable a service, remember that with runit the enable command also start the service."
+  echo " - disable: disable a service, remember that with runit the disable command also stop the service."
+  echo " - restart: restart a service."
+  echo " - start: start a service, the service must be enabled."
+  echo " - stop: stop a service."
+  echo " - status: show the current service status."
+  echo " - list [enabled|disabled]: list the status of all services, if the string \"enabled\" or \"disabled\" is passed as parameter the script show only the services that are in the status specified."
+  echo " - help: print this help message."
+  result=1;
+}
+
+
+if [[ -z "${command}" ]]; then
+  command=help;
+fi
+
+case ${command} in
+  enable) serviceEnable;;
+  disable) serviceDisable;;
+  restart) serviceRestart;;
+  start) serviceStart;;
+  stop) serviceStop;;
+  status) serviceStatus;;
+  list) serviceList;;
+  help) showHelp;;
+  *)
+    if [[ "${invert}" == "false" ]]; then
+      echo "Error: Command \"${command}\" or \"${service_name}\" not found."
+      echo
+      showHelp
+      result=0
+    else
+      ${0} ${service_name} ${command} "false"
+    fi
+    ;;
+esac
+
+exit ${result}
+

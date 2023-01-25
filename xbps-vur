@@ -1,0 +1,71 @@
+#!/bin/bash
+
+basic_path="/opt/void-packages"
+basic_exec="xbps-src"
+
+src_path="${basic_path}/srcpkgs"
+relative_repo_path="hostdir/binpkgs"
+repo_path="${basic_path}/${relative_repo_path}"
+
+first_command="${1}"
+other_commands="${@:2}"
+
+function xbps-rimuovi() {
+  cd ${basic_path}
+  for pacchetto in ${other_commands} ; do
+    pkg_full_path=$(find ${repo_path} -type f -iname "${pacchetto}*.xbps")
+    if [[ ! -z "${pkg_full_path}" ]]; then 
+      for this_pkg in ${pkg_full_path}; do
+        rm -f "${this_pkg}"
+        repo_name=$(dirname ${this_pkg} | sed "s|${basic_path}/||g")
+        echo "Update repository: ${repo_name}"
+        xbps-rindex -c ${repo_name}
+      done
+    fi
+  done
+}
+
+function xbps-aggiorna(){
+  cd ${basic_path}
+  git pull
+  xbps-raw bootstrap-update
+  for pacchetto in $(find ${repo_path} -type f -iname "*.xbps"); do
+     pacchetto=$(echo "${pacchetto}" | sed "s|${repo_path}/||g")
+     pacchetto=$(echo ${pacchetto#*/})
+     pacchetto=$(echo "${pacchetto%-*}")
+     echo "Check update for package: ${pacchetto}"
+     xbps-raw update-check ${pacchetto}
+  done
+}
+
+function xbps-installa(){
+  for pacchetto in ${other_commands} ; do
+    xbps-raw pkg ${pacchetto}
+    if [[ "$?" == "0" ]]; then
+      this_repo=$(find ${repo_path} -type f -iname "${pacchetto}*.xbps" -exec dirname {} \; | sed "s|${basic_path}/||g")
+      sudo xbps-install --repository=${this_repo} ${pacchetto}
+    else
+      exit 0
+    fi
+  done 
+}
+
+function xbps-cerca(){
+  ls ${src_path}/ | grep "${other_commands}"
+}
+
+function xbps-raw() {
+  cd ${basic_path}
+  ./${basic_exec} ${1} ${2}
+}
+
+case ${first_command} in
+  aggiorna) xbps-aggiorna;;
+  cerca) xbps-cerca;;
+  installa) xbps-installa;;
+  rimuovi) xbps-rimuovi;;
+  *) xbps-raw ${first_command} ${other_command};;
+esac
+
+exit 1
+
